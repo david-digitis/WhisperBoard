@@ -9,11 +9,11 @@
     xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2"
     tools:ignore="MissingTranslation">
     <!-- Name of Android spell checker service. The app name should not be translated. -->
-    <string name="spell_checker_service_name">HeliBoard Spell Checker</string>
+    <string name="spell_checker_service_name">WhisperBoard Spell Checker</string>
     <!-- Title for IME settings screen. The app name should not be translated. -->
-    <string name="ime_settings">HeliBoard Settings</string>
+    <string name="ime_settings">WhisperBoard Settings</string>
     <!-- Title for the spell checking service settings screen. The app name should not be translated. -->
-    <string name="android_spell_checker_settings">HeliBoard Spell Checker Settings</string>
+    <string name="android_spell_checker_settings">WhisperBoard Spell Checker Settings</string>
     <!-- Option to provide vibrate/haptic feedback on keypress -->
     <string name="vibrate_on_keypress">Vibrate on keypress</string>
     <!-- Option to provide vibrate/haptic feedback on keypress even in do not disturb mode -->
@@ -1077,6 +1077,18 @@ New dictionary:
     <!-- Button to go to gesture data gathering screen
      string will probably be removed once data gathering is finished (end of 2026 latest) -->
     <string name="gesture_data_take_me_there">Take me there</string>
+
+    <!-- WhisperBoard settings -->
+    <string name="whisper_settings_title">Whisper Voice Input</string>
+    <string name="whisper_language_title">Transcription language</string>
+    <string name="whisper_models_category">Models</string>
+    <string name="whisper_model_item_title">Whisper model</string>
+    <string name="whisper_model_item_summary">Download and manage models</string>
+    <string name="whisper_activate">Activate</string>
+    <string name="whisper_active">Active</string>
+    <string name="whisper_download">Download</string>
+    <string name="whisper_delete">Delete</string>
+    <string name="whisper_download_failed">Download failed. Check your connection.</string>
 
     <!-- new strings should go above the section for gesture data gathering -->
 </resources>

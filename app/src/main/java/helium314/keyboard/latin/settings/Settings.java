@@ -179,6 +179,10 @@ public final class Settings implements SharedPreferences.OnSharedPreferenceChang
     public static final String PREF_TOOLBAR_MODE = "toolbar_mode";
     public static final String PREF_TOOLBAR_HIDING_GLOBAL = "toolbar_hiding_global";
 
+    // Whisper
+    public static final String PREF_WHISPER_MODEL = "whisper_model";
+    public static final String PREF_WHISPER_LANGUAGE = "whisper_language";
+
     // Emoji
     public static final String PREF_EMOJI_MAX_SDK = "emoji_max_sdk";
     public static final String PREF_EMOJI_RECENT_KEYS = "emoji_recent_keys";

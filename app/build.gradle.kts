@@ -54,7 +54,7 @@ android {
             signingConfig = signingConfigs.getByName("debug")
             applicationIdSuffix = ".debug"
         }
-        base.archivesBaseName = "HeliBoard_" + defaultConfig.versionName
+        base.archivesBaseName = "WhisperBoard_" + defaultConfig.versionName
         // got a little too big for GitHub after some dependency upgrades, so we remove the largest dictionary
         androidComponents.onVariants { variant: ApplicationVariant ->
             if (variant.buildType == "debug") {
@@ -115,6 +115,9 @@ android {
 }
 
 dependencies {
+    // whisper
+    implementation(project(":whisperlib"))
+
     // androidx
     implementation("androidx.core:core-ktx:1.16.0") // 1.17 requires SDK 36
     implementation("androidx.recyclerview:recyclerview:1.4.0")

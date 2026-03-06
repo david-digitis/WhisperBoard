@@ -503,6 +503,22 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         pinnedKeys.findViewWithTag<View>(ToolbarKey.VOICE)?.isVisible = show
     }
 
+    fun updateWhisperState(state: helium314.keyboard.latin.whisper.WhisperManager.RecordingState) {
+        val voiceKey = toolbar.findViewWithTag<View>(ToolbarKey.VOICE)
+            ?: pinnedKeys.findViewWithTag<View>(ToolbarKey.VOICE)
+        when (state) {
+            helium314.keyboard.latin.whisper.WhisperManager.RecordingState.RECORDING -> {
+                voiceKey?.setBackgroundColor(Color.parseColor("#CC0000"))
+            }
+            helium314.keyboard.latin.whisper.WhisperManager.RecordingState.TRANSCRIBING -> {
+                voiceKey?.setBackgroundColor(Color.parseColor("#FF8800"))
+            }
+            helium314.keyboard.latin.whisper.WhisperManager.RecordingState.IDLE -> {
+                voiceKey?.background = null
+            }
+        }
+    }
+
     private fun updateKeys() {
         updateVoiceKey()
         val settingsValues = Settings.getValues()

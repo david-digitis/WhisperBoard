@@ -1,2 +1,3 @@
 include ':app'
+include ':whisperlib'
 include ':tools:make-emoji-keys'

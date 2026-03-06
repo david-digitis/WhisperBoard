@@ -46,6 +46,7 @@ import helium314.keyboard.keyboard.emoji.EmojiSearchActivity;
 import helium314.keyboard.keyboard.internal.KeyboardIconsSet;
 import helium314.keyboard.keyboard.internal.keyboard_parser.floris.KeyCode;
 import helium314.keyboard.latin.common.InsetsOutlineProvider;
+import helium314.keyboard.latin.whisper.WhisperManager;
 import helium314.keyboard.dictionarypack.DictionaryPackConstants;
 import helium314.keyboard.event.Event;
 import helium314.keyboard.event.InputTransaction;
@@ -180,6 +181,7 @@ public class LatinIME extends InputMethodService implements
     private GestureConsumer mGestureConsumer = GestureConsumer.NULL_GESTURE_CONSUMER;
 
     private final ClipboardHistoryManager mClipboardHistoryManager = new ClipboardHistoryManager(this);
+    private WhisperManager mWhisperManager;
 
     public static final class UIHandler extends LeakGuardHandlerWrapper<LatinIME> {
         private static final int MSG_UPDATE_SHIFT_STATE = 0;
@@ -545,6 +547,20 @@ public class LatinIME extends InputMethodService implements
         mClipboardHistoryManager.onCreate();
         mHandler.onCreate();
 
+        // Initialize Whisper voice input
+        mWhisperManager = new WhisperManager(this);
+        mWhisperManager.setOnTranscriptionResult(text -> {
+            mInputLogic.mConnection.commitText(text, 1);
+            return Unit.INSTANCE;
+        });
+        mWhisperManager.setOnStateChanged(state -> {
+            if (mSuggestionStripView != null) {
+                mSuggestionStripView.updateWhisperState(state);
+            }
+            return Unit.INSTANCE;
+        });
+        mWhisperManager.preloadModel();
+
         // Register to receive ringer mode change.
         final IntentFilter filter = new IntentFilter();
         filter.addAction(AudioManager.RINGER_MODE_CHANGED_ACTION);
@@ -683,6 +699,9 @@ public class LatinIME extends InputMethodService implements
 
     @Override
     public void onDestroy() {
+        if (mWhisperManager != null) {
+            mWhisperManager.release();
+        }
         mClipboardHistoryManager.onDestroy();
         mDictionaryFacilitator.closeDictionaries();
         mSettings.onDestroy();
@@ -1390,7 +1409,10 @@ public class LatinIME extends InputMethodService implements
     // completely replace #onCodeInput.
     public void onEvent(@NonNull final Event event) {
         if (KeyCode.VOICE_INPUT == event.getKeyCode()) {
-            mRichImm.switchToShortcutIme(this);
+            if (mWhisperManager != null) {
+                mWhisperManager.toggleRecording();
+            }
+            return;
         }
         final InputTransaction completeInputTransaction =
                 mInputLogic.onCodeInput(mSettings.getCurrent(), event,
