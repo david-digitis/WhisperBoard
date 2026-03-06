@@ -9,21 +9,32 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 private const val TAG = "WhisperModelManager"
-private const val HF_BASE_URL = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main"
+private const val HF_GENERIC = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main"
+private const val GH_RELEASE = "https://github.com/david-digitis/WhisperBoard/releases/download/v1.0.0"
 private const val MAX_REDIRECTS = 5
 
-enum class WhisperModel(val fileName: String, val displayName: String, val sizeMB: Int) {
-    TINY("ggml-tiny.bin", "Tiny", 75),
-    BASE("ggml-base.bin", "Base", 142),
-    SMALL("ggml-small.bin", "Small", 488);
-
-    val url: String get() = "$HF_BASE_URL/$fileName"
+enum class WhisperModel(
+    val fileName: String,
+    val displayName: String,
+    val sizeMB: Int,
+    val url: String,
+    val category: ModelCategory = ModelCategory.GENERIC
+) {
+    BASE("ggml-base.bin", "Base", 142,
+        "$HF_GENERIC/ggml-base.bin"),
+    SMALL("ggml-small.bin", "Small", 488,
+        "$HF_GENERIC/ggml-small.bin"),
+    SMALL_FR("ggml-small-fr.bin", "Small FR", 488,
+        "$GH_RELEASE/ggml-small-fr.bin",
+        ModelCategory.FRENCH);
 
     companion object {
         fun fromPref(value: String): WhisperModel =
-            entries.find { it.name.lowercase() == value.lowercase() } ?: BASE
+            entries.find { it.name.lowercase() == value.lowercase() } ?: SMALL_FR
     }
 }
+
+enum class ModelCategory { GENERIC, FRENCH }
 
 class WhisperModelManager(private val context: Context) {
 

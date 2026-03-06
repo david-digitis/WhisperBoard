@@ -6,7 +6,7 @@ import java.io.FileReader
 
 object WhisperCpuConfig {
     val preferredThreadCount: Int
-        get() = CpuInfo.getHighPerfCpuCount().coerceAtLeast(4)
+        get() = (Runtime.getRuntime().availableProcessors() - 2).coerceIn(4, 8)
 }
 
 private class CpuInfo(private val lines: List<String>) {

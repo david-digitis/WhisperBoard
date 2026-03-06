@@ -1082,6 +1082,8 @@ New dictionary:
     <string name="whisper_settings_title">Whisper Voice Input</string>
     <string name="whisper_language_title">Transcription language</string>
     <string name="whisper_models_category">Models</string>
+    <string name="whisper_models_french">French-optimized models (recommended)</string>
+    <string name="whisper_models_generic">Generic multilingual models</string>
     <string name="whisper_model_item_title">Whisper model</string>
     <string name="whisper_model_item_summary">Download and manage models</string>
     <string name="whisper_activate">Activate</string>

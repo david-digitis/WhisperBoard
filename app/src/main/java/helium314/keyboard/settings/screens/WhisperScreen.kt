@@ -18,6 +18,7 @@ import helium314.keyboard.latin.settings.Defaults
 import helium314.keyboard.latin.settings.Settings
 import helium314.keyboard.latin.utils.BackButton
 import helium314.keyboard.latin.utils.prefs
+import helium314.keyboard.latin.whisper.ModelCategory
 import helium314.keyboard.latin.whisper.WhisperModel
 import helium314.keyboard.latin.whisper.WhisperModelManager
 import helium314.keyboard.settings.SearchSettingsScreen
@@ -57,14 +58,35 @@ fun WhisperSettingsScreen(onClickBack: () -> Unit) {
             LanguageSelector()
 
             Spacer(Modifier.height(16.dp))
+
+            // French-optimized models first
             Text(
-                text = stringResource(R.string.whisper_models_category),
+                text = stringResource(R.string.whisper_models_french),
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
             )
+            WhisperModel.entries.filter { it.category == ModelCategory.FRENCH }.forEach { model ->
+                WhisperModelItem(
+                    model = model,
+                    isActive = activeModelPref == model.name.lowercase(),
+                    onActivate = {
+                        prefs.edit { putString(Settings.PREF_WHISPER_MODEL, model.name.lowercase()) }
+                        activeModelPref = model.name.lowercase()
+                    }
+                )
+            }
 
-            WhisperModel.entries.forEach { model ->
+            Spacer(Modifier.height(8.dp))
+
+            // Generic multilingual models
+            Text(
+                text = stringResource(R.string.whisper_models_generic),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+            WhisperModel.entries.filter { it.category == ModelCategory.GENERIC }.forEach { model ->
                 WhisperModelItem(
                     model = model,
                     isActive = activeModelPref == model.name.lowercase(),
