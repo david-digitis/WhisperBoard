@@ -1091,6 +1091,13 @@ New dictionary:
     <string name="whisper_download">Download</string>
     <string name="whisper_delete">Delete</string>
     <string name="whisper_download_failed">Download failed. Check your connection.</string>
+    <string name="whisper_mode_title">Transcription mode</string>
+    <string name="whisper_mode_description">Cloud is fast (~300ms) but requires internet. Local is private but slower (~5s).</string>
+    <string name="whisper_mode_local">Local</string>
+    <string name="whisper_mode_cloud">Cloud</string>
+    <string name="whisper_mode_auto">Auto</string>
+    <string name="whisper_deepgram_api_key">Deepgram API key</string>
+    <string name="whisper_deepgram_api_key_hint">Get your key at deepgram.com ($200 free credit)</string>
 
     <!-- new strings should go above the section for gesture data gathering -->
 </resources>

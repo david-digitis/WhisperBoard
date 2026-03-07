@@ -4,6 +4,7 @@ package helium314.keyboard.settings.screens
 import android.content.Context
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -11,6 +12,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.core.content.edit
 import helium314.keyboard.latin.R
@@ -19,6 +22,7 @@ import helium314.keyboard.latin.settings.Settings
 import helium314.keyboard.latin.utils.BackButton
 import helium314.keyboard.latin.utils.prefs
 import helium314.keyboard.latin.whisper.ModelCategory
+import helium314.keyboard.latin.whisper.TranscriptionMode
 import helium314.keyboard.latin.whisper.WhisperModel
 import helium314.keyboard.latin.whisper.WhisperModelManager
 import helium314.keyboard.settings.SearchSettingsScreen
@@ -54,6 +58,14 @@ fun WhisperSettingsScreen(onClickBack: () -> Unit) {
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
         ) {
+            // Transcription mode selector
+            TranscriptionModeSelector()
+
+            // Deepgram API key
+            DeepgramApiKeyField()
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
             // Language selector
             LanguageSelector()
 
@@ -97,6 +109,86 @@ fun WhisperSettingsScreen(onClickBack: () -> Unit) {
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun TranscriptionModeSelector() {
+    val context = LocalContext.current
+    val prefs = context.prefs()
+    val modes = TranscriptionMode.entries
+    val labels = listOf(
+        stringResource(R.string.whisper_mode_local),
+        stringResource(R.string.whisper_mode_cloud),
+        stringResource(R.string.whisper_mode_auto)
+    )
+    var selected by remember {
+        mutableStateOf(
+            TranscriptionMode.fromPref(
+                prefs.getString(Settings.PREF_TRANSCRIPTION_MODE, Defaults.PREF_TRANSCRIPTION_MODE)!!
+            )
+        )
+    }
+
+    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Text(
+            text = stringResource(R.string.whisper_mode_title),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = stringResource(R.string.whisper_mode_description),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(8.dp))
+        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+            modes.forEachIndexed { index, mode ->
+                SegmentedButton(
+                    selected = selected == mode,
+                    onClick = {
+                        selected = mode
+                        prefs.edit { putString(Settings.PREF_TRANSCRIPTION_MODE, mode.name.lowercase()) }
+                    },
+                    shape = SegmentedButtonDefaults.itemShape(index, modes.size)
+                ) {
+                    Text(labels[index], style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DeepgramApiKeyField() {
+    val context = LocalContext.current
+    val prefs = context.prefs()
+    val mode = TranscriptionMode.fromPref(
+        prefs.getString(Settings.PREF_TRANSCRIPTION_MODE, Defaults.PREF_TRANSCRIPTION_MODE)!!
+    )
+
+    // Only show if cloud or auto mode
+    if (mode == TranscriptionMode.LOCAL) return
+
+    var apiKey by remember {
+        mutableStateOf(prefs.getString(Settings.PREF_DEEPGRAM_API_KEY, "") ?: "")
+    }
+
+    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+        OutlinedTextField(
+            value = apiKey,
+            onValueChange = { newValue ->
+                apiKey = newValue
+                prefs.edit { putString(Settings.PREF_DEEPGRAM_API_KEY, newValue.trim()) }
+            },
+            label = { Text(stringResource(R.string.whisper_deepgram_api_key)) },
+            supportingText = { Text(stringResource(R.string.whisper_deepgram_api_key_hint)) },
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 

@@ -3,6 +3,8 @@ package helium314.keyboard.latin.whisper
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -19,6 +21,17 @@ import java.io.File
 
 private const val TAG = "WhisperManager"
 
+enum class TranscriptionMode {
+    LOCAL,  // Whisper on-device (slow but private)
+    CLOUD,  // Deepgram streaming (fast, requires internet)
+    AUTO;   // Cloud if available, fallback to local
+
+    companion object {
+        fun fromPref(value: String): TranscriptionMode =
+            entries.find { it.name.lowercase() == value.lowercase() } ?: AUTO
+    }
+}
+
 class WhisperManager(private val context: Context) {
     private var whisperContext: WhisperContext? = null
     private var loadedModelName: String? = null
@@ -26,6 +39,8 @@ class WhisperManager(private val context: Context) {
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var transcriptionJob: Job? = null
     private var isTranscribing = false
+    private var deepgramClient: DeepgramClient? = null
+    private val finalSegments = mutableListOf<String>()
     private val vibrator: Vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
     } else {
@@ -36,6 +51,7 @@ class WhisperManager(private val context: Context) {
     val isRecording: Boolean get() = recorder.isActive
 
     var onTranscriptionResult: ((String) -> Unit)? = null
+    var onPartialResult: ((String) -> Unit)? = null
     var onStateChanged: ((RecordingState) -> Unit)? = null
 
     enum class RecordingState { IDLE, RECORDING, TRANSCRIBING }
@@ -50,9 +66,17 @@ class WhisperManager(private val context: Context) {
     private val language: String
         get() = prefs.getString(Settings.PREF_WHISPER_LANGUAGE, Defaults.PREF_WHISPER_LANGUAGE)!!
 
+    private val transcriptionMode: TranscriptionMode
+        get() = TranscriptionMode.fromPref(
+            prefs.getString(Settings.PREF_TRANSCRIPTION_MODE, Defaults.PREF_TRANSCRIPTION_MODE)!!
+        )
+
+    private val deepgramApiKey: String
+        get() = prefs.getString(Settings.PREF_DEEPGRAM_API_KEY, "")!!
+
     fun toggleRecording() {
         if (recorder.isActive) {
-            stopAndTranscribe()
+            stopRecording()
         } else {
             if (isTranscribing) {
                 Log.d(TAG, "Cancelling previous transcription")
@@ -61,6 +85,22 @@ class WhisperManager(private val context: Context) {
             }
             startRecording()
         }
+    }
+
+    private fun shouldUseCloud(): Boolean {
+        val mode = transcriptionMode
+        if (mode == TranscriptionMode.LOCAL) return false
+        if (deepgramApiKey.isBlank()) return false
+        if (mode == TranscriptionMode.CLOUD) return true
+        // AUTO: check network
+        return isNetworkAvailable()
+    }
+
+    private fun isNetworkAvailable(): Boolean {
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val network = cm.activeNetwork ?: return false
+        val caps = cm.getNetworkCapabilities(network) ?: return false
+        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 
     fun preloadModel() {
@@ -87,6 +127,51 @@ class WhisperManager(private val context: Context) {
             return
         }
 
+        if (shouldUseCloud()) {
+            startCloudRecording()
+        } else {
+            startLocalRecording()
+        }
+    }
+
+    private fun startCloudRecording() {
+        Log.d(TAG, "Starting cloud recording (Deepgram)")
+        finalSegments.clear()
+
+        val client = DeepgramClient(
+            apiKey = deepgramApiKey,
+            language = language,
+            onPartialResult = { text ->
+                scope.launch { onPartialResult?.invoke(text) }
+            },
+            onFinalResult = { text ->
+                finalSegments.add(text)
+                scope.launch { onPartialResult?.invoke(finalSegments.joinToString(" ") + " ...") }
+            },
+            onError = { error ->
+                Log.e(TAG, "Deepgram error: $error")
+                scope.launch {
+                    Toast.makeText(context, "Cloud STT error: $error", Toast.LENGTH_SHORT).show()
+                    onStateChanged?.invoke(RecordingState.IDLE)
+                }
+            },
+            onStreamClosed = {
+                // Called when Deepgram has flushed all final results and closed
+                scope.launch { commitCloudResults() }
+            }
+        )
+        client.connect()
+        deepgramClient = client
+
+        // Stream audio chunks to Deepgram
+        recorder.onAudioChunk = { bytes -> client.sendAudio(bytes) }
+        recorder.start()
+        vibrate(50)
+        onStateChanged?.invoke(RecordingState.RECORDING)
+    }
+
+    private fun startLocalRecording() {
+        Log.d(TAG, "Starting local recording (Whisper)")
         val model = activeModel
         if (whisperContext == null || loadedModelName != model.fileName) {
             onStateChanged?.invoke(RecordingState.TRANSCRIBING)
@@ -98,15 +183,43 @@ class WhisperManager(private val context: Context) {
             }
         }
 
+        recorder.onAudioChunk = null // local mode: accumulate
         recorder.start()
-        vibrate(50) // short buzz on start
+        vibrate(50)
         onStateChanged?.invoke(RecordingState.RECORDING)
-        Log.d(TAG, "Recording started")
     }
 
-    private fun stopAndTranscribe() {
+    private fun stopRecording() {
+        vibrate(100)
+        if (deepgramClient != null) {
+            stopCloudRecording()
+        } else {
+            stopLocalRecording()
+        }
+    }
+
+    private fun stopCloudRecording() {
+        recorder.onAudioChunk = null
+        recorder.stop() // discard the FloatArray, we already streamed
+        onStateChanged?.invoke(RecordingState.TRANSCRIBING)
+        // Send CloseStream — Deepgram will flush remaining audio and send final results.
+        // commitCloudResults() is called via onStreamClosed callback when done.
+        deepgramClient?.closeGracefully()
+    }
+
+    private fun commitCloudResults() {
+        val fullText = finalSegments.joinToString(" ").trim()
+        Log.d(TAG, "Cloud transcription: $fullText")
+        if (fullText.isNotBlank()) {
+            onTranscriptionResult?.invoke(fullText)
+        }
+        deepgramClient?.forceClose()
+        deepgramClient = null
+        onStateChanged?.invoke(RecordingState.IDLE)
+    }
+
+    private fun stopLocalRecording() {
         val audioData = recorder.stop()
-        vibrate(100) // longer buzz on stop
         Log.d(TAG, "Recording stopped, ${audioData.size} samples")
 
         if (audioData.isEmpty()) {
@@ -209,6 +322,9 @@ class WhisperManager(private val context: Context) {
 
     fun release() {
         transcriptionJob?.cancel()
+        deepgramClient?.forceClose()
+        deepgramClient = null
+        recorder.onAudioChunk = null
         scope.cancel()
         runBlocking(Dispatchers.IO) {
             whisperContext?.release()

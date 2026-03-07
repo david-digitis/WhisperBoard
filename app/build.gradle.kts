@@ -118,6 +118,9 @@ dependencies {
     // whisper
     implementation(project(":whisperlib"))
 
+    // deepgram streaming (WebSocket)
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
     // androidx
     implementation("androidx.core:core-ktx:1.16.0") // 1.17 requires SDK 36
     implementation("androidx.recyclerview:recyclerview:1.4.0")

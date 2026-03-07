@@ -168,6 +168,7 @@ object Defaults {
     const val PREF_TIMESTAMP_FORMAT = "yyyy-MM-dd HH:mm:ss"
     const val PREF_WHISPER_MODEL = "small_fr"
     const val PREF_WHISPER_LANGUAGE = "fr"
+    const val PREF_TRANSCRIPTION_MODE = "auto"
     const val PREF_EMOJI_RECENT_KEYS = ""
     const val PREF_LAST_SHOWN_EMOJI_CATEGORY_PAGE_ID = 0
     const val PREF_SHOW_DEBUG_SETTINGS = false

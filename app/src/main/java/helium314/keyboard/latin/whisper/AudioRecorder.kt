@@ -16,6 +16,9 @@ class AudioRecorder {
     private var isRecording = false
     private val allSamples = mutableListOf<Short>()
 
+    /** Optional callback for streaming mode — receives raw PCM 16-bit chunks as ByteArray */
+    var onAudioChunk: ((ByteArray) -> Unit)? = null
+
     val isActive: Boolean get() = isRecording
 
     @SuppressLint("MissingPermission")
@@ -54,9 +57,21 @@ class AudioRecorder {
             while (isRecording) {
                 val read = recorder.read(buffer, 0, buffer.size)
                 if (read > 0) {
-                    synchronized(allSamples) {
+                    val chunkCallback = onAudioChunk
+                    if (chunkCallback != null) {
+                        // Streaming mode: convert shorts to little-endian bytes and send
+                        val byteBuffer = java.nio.ByteBuffer.allocate(read * 2)
+                            .order(java.nio.ByteOrder.LITTLE_ENDIAN)
                         for (i in 0 until read) {
-                            allSamples.add(buffer[i])
+                            byteBuffer.putShort(buffer[i])
+                        }
+                        chunkCallback(byteBuffer.array())
+                    } else {
+                        // Local mode: accumulate samples
+                        synchronized(allSamples) {
+                            for (i in 0 until read) {
+                                allSamples.add(buffer[i])
+                            }
                         }
                     }
                 }

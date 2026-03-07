@@ -182,6 +182,8 @@ public final class Settings implements SharedPreferences.OnSharedPreferenceChang
     // Whisper
     public static final String PREF_WHISPER_MODEL = "whisper_model";
     public static final String PREF_WHISPER_LANGUAGE = "whisper_language";
+    public static final String PREF_TRANSCRIPTION_MODE = "transcription_mode";
+    public static final String PREF_DEEPGRAM_API_KEY = "deepgram_api_key";
 
     // Emoji
     public static final String PREF_EMOJI_MAX_SDK = "emoji_max_sdk";
