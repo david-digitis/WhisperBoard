@@ -14,8 +14,16 @@ class DeepgramClient(
     private val onError: (String) -> Unit,
     private val onStreamClosed: () -> Unit = {}
 ) {
+    companion object {
+        // Shared OkHttpClient across all DeepgramClient instances to avoid thread/connection leaks
+        private val sharedClient: OkHttpClient by lazy {
+            OkHttpClient.Builder()
+                .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                .build()
+        }
+    }
+
     private var webSocket: WebSocket? = null
-    private val client = OkHttpClient()
     @Volatile
     var isConnected = false
         private set
@@ -41,7 +49,7 @@ class DeepgramClient(
             .addHeader("Authorization", "Token $apiKey")
             .build()
 
-        webSocket = client.newWebSocket(request, object : WebSocketListener() {
+        webSocket = sharedClient.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 Log.d(TAG, "WebSocket connected")
                 isConnected = true

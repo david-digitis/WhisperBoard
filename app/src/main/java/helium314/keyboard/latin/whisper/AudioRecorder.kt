@@ -22,8 +22,12 @@ class AudioRecorder {
     val isActive: Boolean get() = isRecording
 
     @SuppressLint("MissingPermission")
-    fun start() {
-        if (isRecording) return
+    fun start(): Boolean {
+        if (isRecording) return true
+
+        // Force cleanup of any leftover recording resources
+        forceCleanup()
+
         allSamples.clear()
 
         val bufferSize = AudioRecord.getMinBufferSize(
@@ -43,7 +47,7 @@ class AudioRecorder {
         if (recorder.state != AudioRecord.STATE_INITIALIZED) {
             Log.e(TAG, "AudioRecord failed to initialize")
             recorder.release()
-            return
+            return false
         }
 
         audioRecord = recorder
@@ -77,17 +81,30 @@ class AudioRecorder {
                 }
             }
 
-            recorder.stop()
-            recorder.release()
+            try {
+                recorder.stop()
+            } catch (e: Exception) {
+                Log.w(TAG, "Error stopping AudioRecord", e)
+            }
+            try {
+                recorder.release()
+            } catch (e: Exception) {
+                Log.w(TAG, "Error releasing AudioRecord", e)
+            }
             Log.d(TAG, "Recording stopped, ${allSamples.size} samples collected")
         }, "WhisperAudioRecorder")
 
         recordingThread?.start()
+        return true
     }
 
     fun stop(): FloatArray {
         isRecording = false
-        recordingThread?.join(2000)
+        recordingThread?.join(3000)
+        if (recordingThread?.isAlive == true) {
+            Log.w(TAG, "Recording thread still alive after join timeout, forcing cleanup")
+            forceCleanup()
+        }
         recordingThread = null
         audioRecord = null
 
@@ -98,6 +115,29 @@ class AudioRecorder {
         }
 
         return shortToFloat(samples)
+    }
+
+    private fun forceCleanup() {
+        // Force-stop any lingering AudioRecord that wasn't properly released
+        try {
+            audioRecord?.stop()
+        } catch (e: Exception) {
+            Log.w(TAG, "Error force-stopping AudioRecord", e)
+        }
+        try {
+            audioRecord?.release()
+        } catch (e: Exception) {
+            Log.w(TAG, "Error force-releasing AudioRecord", e)
+        }
+        audioRecord = null
+
+        // Interrupt lingering thread
+        if (recordingThread?.isAlive == true) {
+            Log.w(TAG, "Force-interrupting lingering recording thread")
+            recordingThread?.interrupt()
+            recordingThread?.join(500)
+        }
+        recordingThread = null
     }
 
     private fun shortToFloat(data: ShortArray): FloatArray {

@@ -40,6 +40,7 @@ class WhisperManager(private val context: Context) {
     private var transcriptionJob: Job? = null
     private var isTranscribing = false
     private var deepgramClient: DeepgramClient? = null
+    private var cloudTimeoutJob: Job? = null
     private val finalSegments = mutableListOf<String>()
     private val vibrator: Vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
@@ -79,9 +80,18 @@ class WhisperManager(private val context: Context) {
             stopRecording()
         } else {
             if (isTranscribing) {
-                Log.d(TAG, "Cancelling previous transcription")
-                transcriptionJob?.cancel()
-                isTranscribing = false
+                Log.d(TAG, "Previous transcription still running, ignoring")
+                Toast.makeText(context, "Transcription in progress...", Toast.LENGTH_SHORT).show()
+                return
+            }
+            // Cancel any pending timeout from previous session
+            cloudTimeoutJob?.cancel()
+            cloudTimeoutJob = null
+            // Clean up any leftover Deepgram client from previous session
+            if (deepgramClient != null) {
+                Log.w(TAG, "Cleaning up leftover Deepgram client")
+                deepgramClient?.forceClose()
+                deepgramClient = null
             }
             startRecording()
         }
@@ -165,7 +175,14 @@ class WhisperManager(private val context: Context) {
 
         // Stream audio chunks to Deepgram
         recorder.onAudioChunk = { bytes -> client.sendAudio(bytes) }
-        recorder.start()
+        if (!recorder.start()) {
+            Log.e(TAG, "Failed to start audio recording")
+            Toast.makeText(context, "Microphone unavailable", Toast.LENGTH_SHORT).show()
+            client.forceClose()
+            deepgramClient = null
+            onStateChanged?.invoke(RecordingState.IDLE)
+            return
+        }
         vibrate(50)
         onStateChanged?.invoke(RecordingState.RECORDING)
     }
@@ -184,7 +201,12 @@ class WhisperManager(private val context: Context) {
         }
 
         recorder.onAudioChunk = null // local mode: accumulate
-        recorder.start()
+        if (!recorder.start()) {
+            Log.e(TAG, "Failed to start audio recording")
+            Toast.makeText(context, "Microphone unavailable", Toast.LENGTH_SHORT).show()
+            onStateChanged?.invoke(RecordingState.IDLE)
+            return
+        }
         vibrate(50)
         onStateChanged?.invoke(RecordingState.RECORDING)
     }
@@ -205,15 +227,27 @@ class WhisperManager(private val context: Context) {
         // Send CloseStream — Deepgram will flush remaining audio and send final results.
         // commitCloudResults() is called via onStreamClosed callback when done.
         deepgramClient?.closeGracefully()
+
+        // Failsafe: if Deepgram doesn't respond within 5s, force commit
+        cloudTimeoutJob = scope.launch {
+            delay(5000)
+            if (deepgramClient != null) {
+                Log.w(TAG, "Deepgram timeout — forcing commit")
+                commitCloudResults()
+            }
+        }
     }
 
     private fun commitCloudResults() {
+        val client = deepgramClient ?: return // already committed
+        cloudTimeoutJob?.cancel()
+        cloudTimeoutJob = null
         val fullText = finalSegments.joinToString(" ").trim()
         Log.d(TAG, "Cloud transcription: $fullText")
         if (fullText.isNotBlank()) {
             onTranscriptionResult?.invoke(fullText)
         }
-        deepgramClient?.forceClose()
+        client.forceClose()
         deepgramClient = null
         onStateChanged?.invoke(RecordingState.IDLE)
     }
