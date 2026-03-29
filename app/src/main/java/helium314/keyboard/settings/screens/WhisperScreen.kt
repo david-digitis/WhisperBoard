@@ -66,6 +66,11 @@ fun WhisperSettingsScreen(onClickBack: () -> Unit) {
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
+            // Gemini API key
+            GeminiApiKeyField()
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
             // Language selector
             LanguageSelector()
 
@@ -184,6 +189,38 @@ private fun DeepgramApiKeyField() {
             },
             label = { Text(stringResource(R.string.whisper_deepgram_api_key)) },
             supportingText = { Text(stringResource(R.string.whisper_deepgram_api_key_hint)) },
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+@Composable
+private fun GeminiApiKeyField() {
+    val context = LocalContext.current
+    val prefs = context.prefs()
+
+    var apiKey by remember {
+        mutableStateOf(prefs.getString(Settings.PREF_GEMINI_API_KEY, "") ?: "")
+    }
+
+    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Text(
+            text = stringResource(R.string.gemini_settings_title),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Spacer(Modifier.height(4.dp))
+        OutlinedTextField(
+            value = apiKey,
+            onValueChange = { newValue ->
+                apiKey = newValue
+                prefs.edit { putString(Settings.PREF_GEMINI_API_KEY, newValue.trim()) }
+            },
+            label = { Text(stringResource(R.string.gemini_api_key)) },
+            supportingText = { Text(stringResource(R.string.gemini_api_key_hint)) },
             visualTransformation = PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             singleLine = true,

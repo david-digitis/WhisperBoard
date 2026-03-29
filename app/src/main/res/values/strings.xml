@@ -1099,5 +1099,16 @@ New dictionary:
     <string name="whisper_deepgram_api_key">Deepgram API key</string>
     <string name="whisper_deepgram_api_key_hint">Get your key at deepgram.com ($200 free credit)</string>
 
+    <!-- Action bar -->
+    <string name="action_bar_mic">Voice input</string>
+    <string name="action_translate">Trad</string>
+    <string name="action_grammar">Abc</string>
+    <string name="action_mail_fr">Mail FR</string>
+    <string name="action_mail_en">Mail EN</string>
+    <string name="action_bar_no_selection">Select text first</string>
+    <string name="gemini_api_key">Gemini API key</string>
+    <string name="gemini_api_key_hint">Get your key at aistudio.google.com</string>
+    <string name="gemini_settings_title">AI Actions</string>
+
     <!-- new strings should go above the section for gesture data gathering -->
 </resources>

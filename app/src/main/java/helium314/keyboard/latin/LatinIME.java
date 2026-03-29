@@ -46,6 +46,7 @@ import helium314.keyboard.keyboard.emoji.EmojiSearchActivity;
 import helium314.keyboard.keyboard.internal.KeyboardIconsSet;
 import helium314.keyboard.keyboard.internal.keyboard_parser.floris.KeyCode;
 import helium314.keyboard.latin.common.InsetsOutlineProvider;
+import helium314.keyboard.latin.whisper.ActionBarController;
 import helium314.keyboard.latin.whisper.WhisperManager;
 import helium314.keyboard.dictionarypack.DictionaryPackConstants;
 import helium314.keyboard.event.Event;
@@ -182,6 +183,7 @@ public class LatinIME extends InputMethodService implements
 
     private final ClipboardHistoryManager mClipboardHistoryManager = new ClipboardHistoryManager(this);
     private WhisperManager mWhisperManager;
+    private ActionBarController mActionBarController;
 
     public static final class UIHandler extends LeakGuardHandlerWrapper<LatinIME> {
         private static final int MSG_UPDATE_SHIFT_STATE = 0;
@@ -550,12 +552,26 @@ public class LatinIME extends InputMethodService implements
         // Initialize Whisper voice input
         mWhisperManager = new WhisperManager(this);
         mWhisperManager.setOnTranscriptionResult(text -> {
+            mInputLogic.mConnection.finishComposingText();
             mInputLogic.mConnection.commitText(text, 1);
+            // Auto-select for post-processing
+            try {
+                int end = mInputLogic.mConnection.getExpectedSelectionEnd();
+                int start = end - text.length();
+                if (start >= 0) {
+                    mInputLogic.mConnection.setSelection(start, end);
+                }
+            } catch (Exception e) {
+                android.util.Log.w(TAG, "Auto-select failed", e);
+            }
             return Unit.INSTANCE;
         });
         mWhisperManager.setOnStateChanged(state -> {
             if (mSuggestionStripView != null) {
                 mSuggestionStripView.updateWhisperState(state);
+            }
+            if (mActionBarController != null) {
+                mActionBarController.updateRecordingState(state);
             }
             return Unit.INSTANCE;
         });
@@ -770,6 +786,30 @@ public class LatinIME extends InputMethodService implements
         mInsetsUpdater = ViewOutlineProviderUtilsKt.setInsetsOutlineProvider(view);
         KtxKt.updateSoftInputWindowLayoutParameters(this, mInputView);
         updateSuggestionStripView(view);
+        initActionBar(view);
+    }
+
+    private void initActionBar(View view) {
+        View actionBarView = view.findViewById(R.id.action_bar);
+        if (actionBarView == null) return;
+
+        mActionBarController = new ActionBarController(
+            actionBarView,
+            (Runnable) () -> {
+                if (mWhisperManager != null) {
+                    mWhisperManager.toggleRecording();
+                }
+            },
+            (java.util.function.Consumer<String>) (result) -> {
+                mInputLogic.mConnection.commitText(result, 1);
+            },
+            (Runnable) this::launchSettings
+        );
+
+        mActionBarController.init(() -> {
+            CharSequence selected = mInputLogic.mConnection.getSelectedText(0);
+            return selected != null ? selected.toString() : null;
+        });
     }
 
     public void updateSuggestionStripView(View view) {

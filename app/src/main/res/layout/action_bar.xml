@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/action_bar_container"
+    android:layout_width="match_parent"
+    android:layout_height="40dp"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingStart="4dp"
+    android:paddingEnd="4dp"
+    android:background="#222222">
+
+    <!-- Mic button -->
+    <ImageButton
+        android:id="@+id/action_bar_toggle"
+        android:layout_width="34dp"
+        android:layout_height="30dp"
+        android:scaleType="centerInside"
+        android:background="@drawable/action_bar_mic_bg"
+        android:contentDescription="@string/action_bar_mic"
+        android:src="@drawable/ic_mic_action_bar"
+        android:layout_marginEnd="4dp" />
+
+    <View
+        android:layout_width="1dp"
+        android:layout_height="20dp"
+        android:background="#33FFFFFF"
+        android:layout_marginEnd="4dp" />
+
+    <Button
+        android:id="@+id/action_btn_translate"
+        style="@style/ActionBarButton"
+        android:text="@string/action_translate" />
+
+    <Button
+        android:id="@+id/action_btn_grammar"
+        style="@style/ActionBarButton"
+        android:text="@string/action_grammar" />
+
+    <Button
+        android:id="@+id/action_btn_mail_fr"
+        style="@style/ActionBarButton"
+        android:text="@string/action_mail_fr" />
+
+    <Button
+        android:id="@+id/action_btn_mail_en"
+        style="@style/ActionBarButton"
+        android:text="@string/action_mail_en" />
+
+</LinearLayout>

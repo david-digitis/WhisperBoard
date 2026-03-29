@@ -184,6 +184,7 @@ public final class Settings implements SharedPreferences.OnSharedPreferenceChang
     public static final String PREF_WHISPER_LANGUAGE = "whisper_language";
     public static final String PREF_TRANSCRIPTION_MODE = "transcription_mode";
     public static final String PREF_DEEPGRAM_API_KEY = "deepgram_api_key";
+    public static final String PREF_GEMINI_API_KEY = "gemini_api_key";
 
     // Emoji
     public static final String PREF_EMOJI_MAX_SDK = "emoji_max_sdk";
