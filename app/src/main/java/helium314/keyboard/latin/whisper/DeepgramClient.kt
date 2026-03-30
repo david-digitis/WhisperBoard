@@ -24,6 +24,7 @@ class DeepgramClient(
     }
 
     private var webSocket: WebSocket? = null
+    private val pendingAudio = mutableListOf<ByteArray>()
     @Volatile
     var isConnected = false
         private set
@@ -32,7 +33,16 @@ class DeepgramClient(
     @Volatile
     private var hasNotifiedClose = false
 
+    private var connectTime = 0L
+    private var chunkCount = 0
+    @Volatile
+    var hasPendingFinal = false
+        private set
+
     fun connect() {
+        connectTime = System.currentTimeMillis()
+        chunkCount = 0
+        FileLogger.log(TAG, "connect() — opening WebSocket")
         val url = "wss://api.deepgram.com/v1/listen" +
             "?model=nova-3" +
             "&language=$language" +
@@ -51,8 +61,16 @@ class DeepgramClient(
 
         webSocket = sharedClient.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
-                Log.d(TAG, "WebSocket connected")
+                val elapsed = System.currentTimeMillis() - connectTime
                 isConnected = true
+                // Flush any audio buffered while connecting
+                synchronized(pendingAudio) {
+                    FileLogger.log(TAG, "WebSocket connected in ${elapsed}ms — flushing ${pendingAudio.size} buffered chunks")
+                    for (chunk in pendingAudio) {
+                        webSocket.send(okio.ByteString.of(*chunk))
+                    }
+                    pendingAudio.clear()
+                }
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
@@ -67,7 +85,7 @@ class DeepgramClient(
 
                     val isFinal = json.optBoolean("is_final", false)
                     if (isFinal) {
-                        Log.d(TAG, "Final: $transcript")
+                        hasPendingFinal = false
                         onFinalResult(transcript)
                         // If we already sent CloseStream, this is the last result
                         if (isClosing) {
@@ -76,6 +94,7 @@ class DeepgramClient(
                             notifyClosedOnce()
                         }
                     } else {
+                        hasPendingFinal = true
                         onPartialResult(transcript)
                     }
                 } catch (e: Exception) {
@@ -84,17 +103,19 @@ class DeepgramClient(
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                Log.e(TAG, "WebSocket error: ${t.message}", t)
                 isConnected = false
-                if (isClosing) {
+                if (isClosing || this@DeepgramClient.webSocket == null) {
+                    // Expected failure after close/cancel — not an error
+                    FileLogger.log(TAG, "WebSocket closed (expected): ${t.message}")
                     notifyClosedOnce()
                 } else {
+                    FileLogger.log(TAG, "WebSocket FAILURE: ${t.message}")
                     onError(t.message ?: "Connection failed")
                 }
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                Log.d(TAG, "WebSocket closed: $code $reason")
+                FileLogger.log(TAG, "WebSocket closed: $code $reason")
                 isConnected = false
                 if (isClosing) {
                     notifyClosedOnce()
@@ -104,17 +125,24 @@ class DeepgramClient(
     }
 
     fun sendAudio(audioBytes: ByteArray) {
-        if (!isConnected) return
-        webSocket?.send(okio.ByteString.of(*audioBytes))
+        chunkCount++
+        if (isConnected) {
+            webSocket?.send(okio.ByteString.of(*audioBytes))
+        } else {
+            synchronized(pendingAudio) {
+                pendingAudio.add(audioBytes.copyOf())
+            }
+        }
     }
 
     fun closeGracefully() {
+        FileLogger.log(TAG, "closeGracefully — sent $chunkCount audio chunks total, hasPendingFinal=$hasPendingFinal")
         isClosing = true
         isConnected = false
         try {
             webSocket?.send("{\"type\": \"CloseStream\"}")
         } catch (e: Exception) {
-            Log.w(TAG, "Error sending CloseStream", e)
+            FileLogger.log(TAG, "Error sending CloseStream: ${e.message}")
             forceClose()
             notifyClosedOnce()
         }
@@ -128,12 +156,27 @@ class DeepgramClient(
     }
 
     fun forceClose() {
-        try {
-            webSocket?.close(1000, "Done")
-        } catch (e: Exception) {
-            Log.w(TAG, "Error closing WebSocket", e)
-        }
+        FileLogger.log(TAG, "forceClose()")
+        val ws = webSocket
         webSocket = null
         isConnected = false
+        isClosing = false
+        synchronized(pendingAudio) { pendingAudio.clear() }
+        try {
+            ws?.close(1000, "Done")
+        } catch (e: Exception) {
+            try { ws?.cancel() } catch (_: Exception) {}
+        }
+    }
+
+    /** Hard kill — for abandoned sessions that need immediate cleanup */
+    fun hardClose() {
+        FileLogger.log(TAG, "hardClose()")
+        val ws = webSocket
+        webSocket = null
+        isConnected = false
+        isClosing = false
+        synchronized(pendingAudio) { pendingAudio.clear() }
+        try { ws?.cancel() } catch (_: Exception) {}
     }
 }

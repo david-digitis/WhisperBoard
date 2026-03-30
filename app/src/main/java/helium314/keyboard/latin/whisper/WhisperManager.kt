@@ -33,6 +33,8 @@ enum class TranscriptionMode {
 }
 
 class WhisperManager(private val context: Context) {
+    init { FileLogger.init(context) }
+    private var sessionCount = 0
     private var whisperContext: WhisperContext? = null
     private var loadedModelName: String? = null
     private val recorder = AudioRecorder()
@@ -76,11 +78,13 @@ class WhisperManager(private val context: Context) {
         get() = prefs.getString(Settings.PREF_DEEPGRAM_API_KEY, "")!!
 
     fun toggleRecording() {
+        sessionCount++
+        FileLogger.log(TAG, "--- toggleRecording #$sessionCount (isActive=${recorder.isActive}, isTranscribing=$isTranscribing, deepgramClient=${deepgramClient != null})")
         if (recorder.isActive) {
             stopRecording()
         } else {
             if (isTranscribing) {
-                Log.d(TAG, "Previous transcription still running, ignoring")
+                FileLogger.log(TAG, "BLOCKED: previous transcription still running")
                 Toast.makeText(context, "Transcription in progress...", Toast.LENGTH_SHORT).show()
                 return
             }
@@ -89,8 +93,8 @@ class WhisperManager(private val context: Context) {
             cloudTimeoutJob = null
             // Clean up any leftover Deepgram client from previous session
             if (deepgramClient != null) {
-                Log.w(TAG, "Cleaning up leftover Deepgram client")
-                deepgramClient?.forceClose()
+                FileLogger.log(TAG, "WARNING: cleaning up leftover Deepgram client — hard kill")
+                deepgramClient?.hardClose()
                 deepgramClient = null
             }
             startRecording()
@@ -145,7 +149,7 @@ class WhisperManager(private val context: Context) {
     }
 
     private fun startCloudRecording() {
-        Log.d(TAG, "Starting cloud recording (Deepgram)")
+        FileLogger.log(TAG, "startCloudRecording — creating DeepgramClient")
         finalSegments.clear()
 
         val client = DeepgramClient(
@@ -155,18 +159,19 @@ class WhisperManager(private val context: Context) {
                 scope.launch { onPartialResult?.invoke(text) }
             },
             onFinalResult = { text ->
+                FileLogger.log(TAG, "onFinalResult: \"${text.take(60)}\"")
                 finalSegments.add(text)
                 scope.launch { onPartialResult?.invoke(finalSegments.joinToString(" ") + " ...") }
             },
             onError = { error ->
-                Log.e(TAG, "Deepgram error: $error")
+                FileLogger.log(TAG, "onError: $error")
                 scope.launch {
                     Toast.makeText(context, "Cloud STT error: $error", Toast.LENGTH_SHORT).show()
                     onStateChanged?.invoke(RecordingState.IDLE)
                 }
             },
             onStreamClosed = {
-                // Called when Deepgram has flushed all final results and closed
+                FileLogger.log(TAG, "onStreamClosed")
                 scope.launch { commitCloudResults() }
             }
         )
@@ -221,18 +226,26 @@ class WhisperManager(private val context: Context) {
     }
 
     private fun stopCloudRecording() {
+        FileLogger.log(TAG, "stopCloudRecording — hasPendingFinal=${deepgramClient?.hasPendingFinal}")
         recorder.onAudioChunk = null
-        recorder.stop() // discard the FloatArray, we already streamed
+        recorder.stop()
         onStateChanged?.invoke(RecordingState.TRANSCRIBING)
-        // Send CloseStream — Deepgram will flush remaining audio and send final results.
-        // commitCloudResults() is called via onStreamClosed callback when done.
-        deepgramClient?.closeGracefully()
 
-        // Failsafe: if Deepgram doesn't respond within 5s, force commit
+        val client = deepgramClient
+        if (client != null && !client.hasPendingFinal) {
+            // All final results already received — commit immediately
+            FileLogger.log(TAG, "No pending results — committing immediately")
+            commitCloudResults()
+            return
+        }
+
+        client?.closeGracefully()
+
+        // Failsafe: reduced to 2s since we only wait when there's actually pending audio
         cloudTimeoutJob = scope.launch {
-            delay(5000)
+            delay(2000)
             if (deepgramClient != null) {
-                Log.w(TAG, "Deepgram timeout — forcing commit")
+                FileLogger.log(TAG, "TIMEOUT 2s — forcing commit")
                 commitCloudResults()
             }
         }
@@ -243,7 +256,7 @@ class WhisperManager(private val context: Context) {
         cloudTimeoutJob?.cancel()
         cloudTimeoutJob = null
         val fullText = finalSegments.joinToString(" ").trim()
-        Log.d(TAG, "Cloud transcription: $fullText")
+        FileLogger.log(TAG, "commitCloudResults: \"${fullText.take(80)}\" (${finalSegments.size} segments)")
         if (fullText.isNotBlank()) {
             onTranscriptionResult?.invoke(fullText)
         }
