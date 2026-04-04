@@ -21,6 +21,37 @@ class GeminiClient(private val apiKey: String) {
                 .build()
         }
 
+        // Circuit breaker: 3 failures → open for 30s
+        private const val FAILURE_THRESHOLD = 3
+        private const val RECOVERY_TIMEOUT_MS = 30_000L
+        @Volatile private var consecutiveFailures = 0
+        @Volatile private var circuitOpenedAt = 0L
+
+        private fun isCircuitOpen(): Boolean {
+            if (consecutiveFailures < FAILURE_THRESHOLD) return false
+            // Check if recovery timeout has elapsed
+            if (System.currentTimeMillis() - circuitOpenedAt > RECOVERY_TIMEOUT_MS) {
+                FileLogger.log(TAG, "Circuit half-open — allowing test request")
+                return false
+            }
+            return true
+        }
+
+        private fun recordSuccess() {
+            if (consecutiveFailures > 0) {
+                FileLogger.log(TAG, "Circuit closed — service recovered")
+            }
+            consecutiveFailures = 0
+        }
+
+        private fun recordFailure() {
+            consecutiveFailures++
+            if (consecutiveFailures >= FAILURE_THRESHOLD) {
+                circuitOpenedAt = System.currentTimeMillis()
+                FileLogger.log(TAG, "Circuit OPEN — $consecutiveFailures consecutive failures, blocking for ${RECOVERY_TIMEOUT_MS / 1000}s")
+            }
+        }
+
         val PROMPTS = mapOf(
             "translate" to """Detect the language of the following text. If it is French, translate it to English. Otherwise, translate it to French. No formatting, no introduction, return ONLY the translation.""",
 
@@ -46,6 +77,12 @@ Renvoie UNIQUEMENT l'email en anglais, rien d'autre. Pas d'objet."""
         onResult: (String) -> Unit,
         onError: (String) -> Unit
     ) {
+        if (isCircuitOpen()) {
+            FileLogger.log(TAG, "Circuit OPEN — rejecting $action request")
+            onError("Gemini temporarily unavailable")
+            return
+        }
+
         val prompt = PROMPTS[action]
         if (prompt == null) {
             onError("Unknown action: $action")
@@ -72,7 +109,8 @@ Renvoie UNIQUEMENT l'email en anglais, rien d'autre. Pas d'objet."""
 
         sharedClient.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                Log.e(TAG, "Gemini request failed", e)
+                recordFailure()
+                FileLogger.log(TAG, "Request failed: ${e.message} (failures: $consecutiveFailures)")
                 onError(e.message ?: "Network error")
             }
 
@@ -80,7 +118,8 @@ Renvoie UNIQUEMENT l'email en anglais, rien d'autre. Pas d'objet."""
                 try {
                     val body = response.body?.string()
                     if (!response.isSuccessful) {
-                        Log.e(TAG, "Gemini HTTP ${response.code}: $body")
+                        recordFailure()
+                        FileLogger.log(TAG, "HTTP ${response.code} (failures: $consecutiveFailures)")
                         onError("Gemini error ${response.code}")
                         return
                     }
@@ -88,6 +127,7 @@ Renvoie UNIQUEMENT l'email en anglais, rien d'autre. Pas d'objet."""
                     val json = JSONObject(body ?: "")
                     val candidates = json.optJSONArray("candidates")
                     if (candidates == null || candidates.length() == 0) {
+                        recordFailure()
                         onError("No response from Gemini")
                         return
                     }
@@ -100,13 +140,15 @@ Renvoie UNIQUEMENT l'email en anglais, rien d'autre. Pas d'objet."""
                         ?: ""
 
                     if (content.isNotBlank()) {
-                        Log.d(TAG, "Gemini result ($action): ${content.take(100)}...")
+                        recordSuccess()
                         onResult(content.trim())
                     } else {
+                        recordFailure()
                         onError("Empty response from Gemini")
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error parsing Gemini response", e)
+                    recordFailure()
+                    FileLogger.log(TAG, "Parse error: ${e.message} (failures: $consecutiveFailures)")
                     onError("Parse error: ${e.message}")
                 }
             }
