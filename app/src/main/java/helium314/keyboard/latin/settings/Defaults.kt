@@ -166,7 +166,6 @@ object Defaults {
     const val PREF_REMOVE_REDUNDANT_POPUPS = false
     const val PREF_SPACE_BAR_TEXT = ""
     const val PREF_TIMESTAMP_FORMAT = "yyyy-MM-dd HH:mm:ss"
-    const val PREF_WHISPER_MODEL = "small_fr"
     const val PREF_WHISPER_LANGUAGE = "fr"
     const val PREF_TRANSCRIPTION_MODE = "auto"
     const val PREF_EMOJI_RECENT_KEYS = ""

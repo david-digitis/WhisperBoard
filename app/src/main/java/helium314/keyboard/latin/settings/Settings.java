@@ -180,7 +180,6 @@ public final class Settings implements SharedPreferences.OnSharedPreferenceChang
     public static final String PREF_TOOLBAR_HIDING_GLOBAL = "toolbar_hiding_global";
 
     // Whisper
-    public static final String PREF_WHISPER_MODEL = "whisper_model";
     public static final String PREF_WHISPER_LANGUAGE = "whisper_language";
     public static final String PREF_TRANSCRIPTION_MODE = "transcription_mode";
     public static final String PREF_DEEPGRAM_API_KEY = "deepgram_api_key";
