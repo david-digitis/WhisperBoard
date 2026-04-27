@@ -71,27 +71,35 @@ class WhisperManager(private val context: Context) {
         get() = prefs.getString(Settings.PREF_DEEPGRAM_API_KEY, "")!!
 
     fun toggleRecording() {
+        if (recorder.isActive) releaseRecord() else pressRecord()
+    }
+
+    /** Push-to-talk : appele sur ACTION_DOWN du bouton mic. Idempotent. */
+    fun pressRecord() {
         sessionCount++
-        FileLogger.log(TAG, "--- toggleRecording #$sessionCount (isActive=${recorder.isActive}, isTranscribing=$isTranscribing, deepgramClient=${deepgramClient != null})")
-        if (recorder.isActive) {
-            stopRecording()
-        } else {
-            if (isTranscribing) {
-                FileLogger.log(TAG, "BLOCKED: previous transcription still running")
-                Toast.makeText(context, "Transcription in progress...", Toast.LENGTH_SHORT).show()
-                return
-            }
-            // Cancel any pending timeout from previous session
-            cloudTimeoutJob?.cancel()
-            cloudTimeoutJob = null
-            // Clean up any leftover Deepgram client from previous session
-            if (deepgramClient != null) {
-                FileLogger.log(TAG, "WARNING: cleaning up leftover Deepgram client — hard kill")
-                deepgramClient?.hardClose()
-                deepgramClient = null
-            }
-            startRecording()
+        FileLogger.log(TAG, "--- pressRecord #$sessionCount (isActive=${recorder.isActive}, isTranscribing=$isTranscribing, deepgramClient=${deepgramClient != null})")
+        if (recorder.isActive) return
+        if (isTranscribing) {
+            FileLogger.log(TAG, "BLOCKED: previous transcription still running")
+            Toast.makeText(context, "Transcription in progress...", Toast.LENGTH_SHORT).show()
+            return
         }
+        // Cancel any pending timeout from previous session
+        cloudTimeoutJob?.cancel()
+        cloudTimeoutJob = null
+        // Clean up any leftover Deepgram client from previous session
+        if (deepgramClient != null) {
+            FileLogger.log(TAG, "WARNING: cleaning up leftover Deepgram client — hard kill")
+            deepgramClient?.hardClose()
+            deepgramClient = null
+        }
+        startRecording()
+    }
+
+    /** Push-to-talk : appele sur ACTION_UP/CANCEL du bouton mic. Idempotent. */
+    fun releaseRecord() {
+        if (!recorder.isActive) return
+        stopRecording()
     }
 
     private fun shouldUseCloud(): Boolean {

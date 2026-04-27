@@ -554,16 +554,6 @@ public class LatinIME extends InputMethodService implements
         mWhisperManager.setOnTranscriptionResult(text -> {
             mInputLogic.mConnection.finishComposingText();
             mInputLogic.mConnection.commitText(text, 1);
-            // Auto-select for post-processing
-            try {
-                int end = mInputLogic.mConnection.getExpectedSelectionEnd();
-                int start = end - text.length();
-                if (start >= 0) {
-                    mInputLogic.mConnection.setSelection(start, end);
-                }
-            } catch (Exception e) {
-                android.util.Log.w(TAG, "Auto-select failed", e);
-            }
             return Unit.INSTANCE;
         });
         mWhisperManager.setOnStateChanged(state -> {
@@ -796,14 +786,14 @@ public class LatinIME extends InputMethodService implements
         mActionBarController = new ActionBarController(
             actionBarView,
             (Runnable) () -> {
-                if (mWhisperManager != null) {
-                    mWhisperManager.toggleRecording();
-                }
+                if (mWhisperManager != null) mWhisperManager.pressRecord();
+            },
+            (Runnable) () -> {
+                if (mWhisperManager != null) mWhisperManager.releaseRecord();
             },
             (java.util.function.Consumer<String>) (result) -> {
                 mInputLogic.mConnection.commitText(result, 1);
-            },
-            (Runnable) this::launchSettings
+            }
         );
 
         mActionBarController.init(() -> {
@@ -1443,6 +1433,16 @@ public class LatinIME extends InputMethodService implements
     @Override
     public void onCodeInput(final int codePoint, final int x, final int y, final boolean isKeyRepeat) {
         mKeyboardActionListener.onCodeInput(codePoint, x, y, isKeyRepeat);
+    }
+
+    @Override
+    public void onMicPress() {
+        if (mWhisperManager != null) mWhisperManager.pressRecord();
+    }
+
+    @Override
+    public void onMicRelease() {
+        if (mWhisperManager != null) mWhisperManager.releaseRecord();
     }
 
     // This method is public for testability of LatinIME, but also in the future it should

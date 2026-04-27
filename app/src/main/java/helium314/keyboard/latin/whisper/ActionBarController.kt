@@ -2,9 +2,11 @@ package helium314.keyboard.latin.whisper
 
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
+import android.annotation.SuppressLint
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.util.Log
+import android.view.MotionEvent
 import android.view.View
 import android.widget.Button
 import android.widget.ImageButton
@@ -17,9 +19,9 @@ private const val TAG = "ActionBarController"
 
 class ActionBarController(
     private val actionBarView: View,
-    private val onMicClick: Runnable,
+    private val onMicPress: Runnable,
+    private val onMicRelease: Runnable,
     private val onActionResult: java.util.function.Consumer<String>,
-    private val onSettingsClick: Runnable? = null
 ) {
     private val micButton: ImageButton = actionBarView.findViewById(R.id.action_bar_toggle)
     private val btnTranslate: Button = actionBarView.findViewById(R.id.action_btn_translate)
@@ -31,13 +33,29 @@ class ActionBarController(
     private var isProcessing = false
     private var getSelectedText: java.util.function.Supplier<String?>? = null
 
+    @SuppressLint("ClickableViewAccessibility")
     fun init(selectedTextProvider: java.util.function.Supplier<String?>) {
         getSelectedText = selectedTextProvider
 
-        micButton.setOnClickListener { onMicClick.run() }
-        micButton.setOnLongClickListener {
-            onSettingsClick?.run()
-            true
+        // Push-to-talk : enregistre tant que le doigt est sur le bouton.
+        // requestDisallowInterceptTouchEvent empeche un parent (ScrollView, etc.)
+        // de voler le geste et de declencher un ACTION_CANCEL premature.
+        micButton.setOnTouchListener { v, ev ->
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    v.parent?.requestDisallowInterceptTouchEvent(true)
+                    Log.d(TAG, "mic ACTION_DOWN -> press")
+                    onMicPress.run()
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    v.parent?.requestDisallowInterceptTouchEvent(false)
+                    Log.d(TAG, "mic ACTION_${if (ev.actionMasked == MotionEvent.ACTION_UP) "UP" else "CANCEL"} -> release")
+                    onMicRelease.run()
+                    true
+                }
+                else -> false
+            }
         }
         btnTranslate.setOnClickListener { processAction("translate") }
         btnGrammar.setOnClickListener { processAction("grammar") }

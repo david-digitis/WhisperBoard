@@ -75,6 +75,10 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         fun onCodeInput(primaryCode: Int, x: Int, y: Int, isKeyRepeat: Boolean)
         fun removeSuggestion(word: String?)
         fun removeExternalSuggestions()
+        /** Push-to-talk : appele sur ACTION_DOWN du bouton mic. */
+        fun onMicPress() {}
+        /** Push-to-talk : appele sur ACTION_UP/CANCEL du bouton mic. */
+        fun onMicRelease() {}
     }
 
     private val moreSuggestionsContainer: View
@@ -157,6 +161,7 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
                 val button = createToolbarKey(context, key)
                 button.layoutParams = toolbarKeyLayoutParams
                 setupKey(button, colors)
+                if (key == ToolbarKey.VOICE) wireMicPushToTalk(button)
                 toolbar.addView(button)
             }
         }
@@ -165,6 +170,7 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
                 val button = createToolbarKey(context, pinnedKey)
                 button.layoutParams = toolbarKeyLayoutParams
                 setupKey(button, colors)
+                if (pinnedKey == ToolbarKey.VOICE) wireMicPushToTalk(button)
                 pinnedKeys.addView(button)
                 val pinnedKeyInToolbar = toolbar.findViewWithTag<View>(pinnedKey)
                 if (pinnedKeyInToolbar != null && Settings.getValues().mQuickPinToolbarKeys)
@@ -560,6 +566,31 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         view.setOnLongClickListener(this)
         colors.setColor(view, ColorType.TOOL_BAR_KEY)
         colors.setBackground(view, ColorType.STRIP_BACKGROUND)
+    }
+
+    /**
+     * Override le click listener par un touch listener pour le bouton mic
+     * de la suggestion strip (push-to-talk). On garde tag/colors deja appliques.
+     */
+    @android.annotation.SuppressLint("ClickableViewAccessibility")
+    private fun wireMicPushToTalk(button: ImageButton) {
+        button.setOnClickListener(null)
+        button.setOnLongClickListener(null)
+        button.setOnTouchListener { v, ev ->
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    v.parent?.requestDisallowInterceptTouchEvent(true)
+                    listener.onMicPress()
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    v.parent?.requestDisallowInterceptTouchEvent(false)
+                    listener.onMicRelease()
+                    true
+                }
+                else -> false
+            }
+        }
     }
 
     companion object {
