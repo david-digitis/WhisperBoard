@@ -12,17 +12,15 @@ import android.os.VibratorManager
 import android.util.Log
 import android.widget.Toast
 import androidx.core.content.ContextCompat
-import com.whispercpp.whisper.WhisperContext
 import helium314.keyboard.latin.settings.Defaults
 import helium314.keyboard.latin.settings.Settings
 import helium314.keyboard.latin.utils.prefs
 import kotlinx.coroutines.*
-import java.io.File
 
 private const val TAG = "WhisperManager"
 
 enum class TranscriptionMode {
-    LOCAL,  // Whisper on-device (slow but private)
+    LOCAL,  // Parakeet on-device via sherpa-onnx (private, no internet)
     CLOUD,  // Deepgram streaming (fast, requires internet)
     AUTO;   // Cloud if available, fallback to local
 
@@ -35,8 +33,8 @@ enum class TranscriptionMode {
 class WhisperManager(private val context: Context) {
     init { FileLogger.init(context) }
     private var sessionCount = 0
-    private var whisperContext: WhisperContext? = null
-    private var loadedModelName: String? = null
+    private var sherpaClient: SherpaClient? = null
+    private val sherpaModelManager = SherpaModelManager(context)
     private val recorder = AudioRecorder()
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var transcriptionJob: Job? = null
@@ -60,11 +58,6 @@ class WhisperManager(private val context: Context) {
     enum class RecordingState { IDLE, RECORDING, TRANSCRIBING }
 
     private val prefs get() = context.prefs()
-
-    private val activeModel: WhisperModel
-        get() = WhisperModel.fromPref(
-            prefs.getString(Settings.PREF_WHISPER_MODEL, Defaults.PREF_WHISPER_MODEL)!!
-        )
 
     private val language: String
         get() = prefs.getString(Settings.PREF_WHISPER_LANGUAGE, Defaults.PREF_WHISPER_LANGUAGE)!!
@@ -118,17 +111,17 @@ class WhisperManager(private val context: Context) {
     }
 
     fun preloadModel() {
-        if (whisperContext != null && loadedModelName == activeModel.fileName) return
+        if (sherpaClient != null) return
+        if (!sherpaModelManager.isInstalled()) {
+            Log.w(TAG, "Parakeet model not installed — skipping preload")
+            return
+        }
         scope.launch(Dispatchers.IO) {
             try {
-                val loaded = loadModelInternal()
-                if (loaded) {
-                    Log.d(TAG, "Model preloaded successfully")
-                } else {
-                    Log.w(TAG, "No model found to preload")
-                }
+                if (loadSherpaInternal()) Log.d(TAG, "Parakeet preloaded")
+                else Log.w(TAG, "Parakeet preload failed")
             } catch (e: Exception) {
-                Log.e(TAG, "Model preload failed", e)
+                Log.e(TAG, "Parakeet preload failed", e)
             }
         }
     }
@@ -193,14 +186,17 @@ class WhisperManager(private val context: Context) {
     }
 
     private fun startLocalRecording() {
-        Log.d(TAG, "Starting local recording (Whisper)")
-        val model = activeModel
-        if (whisperContext == null || loadedModelName != model.fileName) {
+        Log.d(TAG, "Starting local recording (Parakeet)")
+        if (sherpaClient == null) {
+            if (!sherpaModelManager.isInstalled()) {
+                Toast.makeText(context, "Parakeet model not downloaded — open Whisper settings.", Toast.LENGTH_LONG).show()
+                return
+            }
             onStateChanged?.invoke(RecordingState.TRANSCRIBING)
-            Log.d(TAG, "Loading model ${model.displayName} on first use...")
-            if (!loadModelSync()) {
+            Log.d(TAG, "Loading Parakeet on first use...")
+            if (!loadSherpaSync()) {
                 onStateChanged?.invoke(RecordingState.IDLE)
-                Toast.makeText(context, "Model ${model.displayName} not found. Download it in Whisper settings.", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, "Failed to load Parakeet model.", Toast.LENGTH_LONG).show()
                 return
             }
         }
@@ -278,12 +274,11 @@ class WhisperManager(private val context: Context) {
         onStateChanged?.invoke(RecordingState.TRANSCRIBING)
         isTranscribing = true
 
-        val lang = language
         transcriptionJob = scope.launch {
             try {
-                val ctx = whisperContext ?: return@launch
+                val client = sherpaClient ?: return@launch
                 val text = withContext(Dispatchers.IO) {
-                    ctx.transcribeData(audioData, language = lang)
+                    client.transcribe(audioData)
                 }
                 Log.d(TAG, "Transcription: $text")
                 if (text.isNotBlank()) {
@@ -301,59 +296,16 @@ class WhisperManager(private val context: Context) {
     }
 
     @Synchronized
-    private fun loadModelSync(): Boolean = loadModelInternal()
+    private fun loadSherpaSync(): Boolean = loadSherpaInternal()
 
-    private fun loadModelInternal(): Boolean {
-        val model = activeModel
-        val modelFileName = model.fileName
-
-        // Release previous context if switching models
-        if (whisperContext != null && loadedModelName != modelFileName) {
-            Log.d(TAG, "Releasing previous model $loadedModelName")
-            runBlocking { whisperContext?.release() }
-            whisperContext = null
-            loadedModelName = null
-        }
-
-        val externalModel = File(context.getExternalFilesDir(null), "models/$modelFileName")
-        if (externalModel.exists()) {
-            Log.d(TAG, "Loading model from ${externalModel.absolutePath}")
-            return try {
-                whisperContext = WhisperContext.createContextFromFile(externalModel.absolutePath)
-                loadedModelName = modelFileName
-                true
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to load model from file", e)
-                false
-            }
-        }
-
-        val internalModel = File(context.filesDir, "models/$modelFileName")
-        if (internalModel.exists()) {
-            Log.d(TAG, "Loading model from ${internalModel.absolutePath}")
-            return try {
-                whisperContext = WhisperContext.createContextFromFile(internalModel.absolutePath)
-                loadedModelName = modelFileName
-                true
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to load model from internal file", e)
-                false
-            }
-        }
-
+    private fun loadSherpaInternal(): Boolean {
+        if (sherpaClient != null) return true
         return try {
-            val models = context.assets.list("models/")
-            if (models != null && models.contains(modelFileName)) {
-                Log.d(TAG, "Loading model from assets: models/$modelFileName")
-                whisperContext = WhisperContext.createContextFromAsset(context.assets, "models/$modelFileName")
-                loadedModelName = modelFileName
-                true
-            } else {
-                Log.w(TAG, "Model $modelFileName not found")
-                false
-            }
+            val dir = sherpaModelManager.getModelDir()
+            sherpaClient = SherpaClient(dir)
+            true
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to load model from assets", e)
+            Log.e(TAG, "Failed to init SherpaClient", e)
             false
         }
     }
@@ -374,8 +326,8 @@ class WhisperManager(private val context: Context) {
         recorder.onAudioChunk = null
         scope.cancel()
         runBlocking(Dispatchers.IO) {
-            whisperContext?.release()
-            whisperContext = null
+            sherpaClient?.release()
+            sherpaClient = null
         }
     }
 }
