@@ -21,27 +21,14 @@ import helium314.keyboard.latin.settings.Defaults
 import helium314.keyboard.latin.settings.Settings
 import helium314.keyboard.latin.utils.BackButton
 import helium314.keyboard.latin.utils.prefs
-import helium314.keyboard.latin.whisper.ModelCategory
+import helium314.keyboard.latin.whisper.SherpaModelManager
 import helium314.keyboard.latin.whisper.TranscriptionMode
-import helium314.keyboard.latin.whisper.WhisperModel
-import helium314.keyboard.latin.whisper.WhisperModelManager
-import helium314.keyboard.settings.SearchSettingsScreen
 import helium314.keyboard.settings.Setting
 import helium314.keyboard.settings.preferences.ListPreference
 import kotlinx.coroutines.launch
 
 @Composable
 fun WhisperSettingsScreen(onClickBack: () -> Unit) {
-    val context = LocalContext.current
-    val prefs = context.prefs()
-
-    // Shared reactive state — triggers recomposition of ALL model cards
-    var activeModelPref by remember {
-        mutableStateOf(
-            prefs.getString(Settings.PREF_WHISPER_MODEL, Defaults.PREF_WHISPER_MODEL)!!
-        )
-    }
-
     Scaffold(
         topBar = {
             @OptIn(ExperimentalMaterial3Api::class)
@@ -58,61 +45,23 @@ fun WhisperSettingsScreen(onClickBack: () -> Unit) {
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
         ) {
-            // Transcription mode selector
             TranscriptionModeSelector()
-
-            // Deepgram API key
             DeepgramApiKeyField()
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-            // Gemini API key
             GeminiApiKeyField()
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-            // Language selector
             LanguageSelector()
 
             Spacer(Modifier.height(16.dp))
-
-            // French-optimized models first
             Text(
-                text = stringResource(R.string.whisper_models_french),
+                text = "Local model",
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
             )
-            WhisperModel.entries.filter { it.category == ModelCategory.FRENCH }.forEach { model ->
-                WhisperModelItem(
-                    model = model,
-                    isActive = activeModelPref == model.name.lowercase(),
-                    onActivate = {
-                        prefs.edit { putString(Settings.PREF_WHISPER_MODEL, model.name.lowercase()) }
-                        activeModelPref = model.name.lowercase()
-                    }
-                )
-            }
-
-            Spacer(Modifier.height(8.dp))
-
-            // Generic multilingual models
-            Text(
-                text = stringResource(R.string.whisper_models_generic),
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-            )
-            WhisperModel.entries.filter { it.category == ModelCategory.GENERIC }.forEach { model ->
-                WhisperModelItem(
-                    model = model,
-                    isActive = activeModelPref == model.name.lowercase(),
-                    onActivate = {
-                        prefs.edit { putString(Settings.PREF_WHISPER_MODEL, model.name.lowercase()) }
-                        activeModelPref = model.name.lowercase()
-                    }
-                )
-            }
+            ParakeetModelCard()
         }
     }
 }
@@ -276,37 +225,27 @@ fun createWhisperSettings(context: Context) = listOf(
         )
         ListPreference(it, items, Defaults.PREF_WHISPER_LANGUAGE)
     },
-) + WhisperModel.entries.map { model ->
-    Setting(context, "whisper_model_${model.name}",
-        R.string.whisper_model_item_title,
-        R.string.whisper_model_item_summary
-    ) {
-        WhisperModelItem(model)
-    }
-}
+)
 
 @Composable
-private fun WhisperModelItem(
-    model: WhisperModel,
-    isActive: Boolean = false,
-    onActivate: (() -> Unit)? = null
-) {
+private fun ParakeetModelCard() {
     val context = LocalContext.current
-    val modelManager = remember { WhisperModelManager(context) }
+    val modelManager = remember { SherpaModelManager(context) }
     val scope = rememberCoroutineScope()
-    val prefs = context.prefs()
 
-    var isDownloaded by remember { mutableStateOf(modelManager.isDownloaded(model)) }
+    var isInstalled by remember { mutableStateOf(modelManager.isInstalled()) }
     var isDownloading by remember { mutableStateOf(false) }
     var progress by remember { mutableFloatStateOf(0f) }
     var downloadFailed by remember { mutableStateOf(false) }
+
+    val sizeMB = modelManager.totalDownloadSizeBytes() / 1_000_000
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (isActive)
+            containerColor = if (isInstalled)
                 MaterialTheme.colorScheme.primaryContainer
             else
                 MaterialTheme.colorScheme.surfaceVariant
@@ -318,32 +257,28 @@ private fun WhisperModelItem(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = model.displayName,
+                        text = "Parakeet TDT v3",
                         style = MaterialTheme.typography.titleMedium
                     )
                     Text(
-                        text = "${model.sizeMB} MB",
+                        text = "Multilingual (FR, EN, ES, DE, IT and 20 more)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "$sizeMB MB",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (isDownloaded && !isActive && onActivate != null) {
-                        Button(onClick = onActivate) {
-                            Text(stringResource(R.string.whisper_activate))
-                        }
-                    }
-                    if (isActive && isDownloaded) {
-                        Text(
-                            text = stringResource(R.string.whisper_active),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.align(Alignment.CenterVertically)
-                        )
-                    }
+                if (isInstalled) {
+                    Text(
+                        text = stringResource(R.string.whisper_active),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                 }
             }
 
@@ -371,28 +306,24 @@ private fun WhisperModelItem(
 
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (!isDownloaded && !isDownloading) {
+                if (!isInstalled && !isDownloading) {
                     OutlinedButton(onClick = {
                         isDownloading = true
                         downloadFailed = false
                         scope.launch {
-                            val success = modelManager.downloadModel(model) { progress = it }
+                            val ok = modelManager.downloadModel { progress = it }
                             isDownloading = false
-                            isDownloaded = success
-                            downloadFailed = !success
-                            if (success && modelManager.getDownloadedModels().size == 1) {
-                                prefs.edit { putString(Settings.PREF_WHISPER_MODEL, model.name.lowercase()) }
-                                onActivate?.invoke()
-                            }
+                            isInstalled = ok
+                            downloadFailed = !ok
                         }
                     }) {
                         Text(stringResource(R.string.whisper_download))
                     }
                 }
-                if (isDownloaded && !isActive) {
+                if (isInstalled) {
                     TextButton(onClick = {
-                        modelManager.deleteModel(model)
-                        isDownloaded = false
+                        modelManager.deleteModel()
+                        isInstalled = false
                     }) {
                         Text(
                             stringResource(R.string.whisper_delete),
