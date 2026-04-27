@@ -15,8 +15,5 @@ app/.attach_*
 fastlane/Appfile
 tools/*.txt
 
-whisperlib/.cxx
-whisperlib/build
-
 # scratch space pour exploration sherpa-onnx (APK pull, AAR brut, sources demo)
 .tmp-sherpa/
