@@ -125,8 +125,11 @@ android {
 }
 
 dependencies {
-    // whisper
+    // whisper (legacy — sera retire en phase 4 au profit de sherpa-onnx)
     implementation(project(":whisperlib"))
+
+    // sherpa-onnx 1.12.40 — moteur Parakeet TDT v3 multilingue
+    implementation(files("libs/sherpa-onnx-1.12.40.aar"))
 
     // deepgram streaming (WebSocket)
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
